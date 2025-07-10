@@ -1,39 +1,51 @@
 #!/bin/bash
 
+# Nạp cấu hình
 source "$(dirname "$0")/.env"
 
-# Cấu hình
-BACKUP_DIR="/opt/odoo16/backups"
-ODOO_HOME=/opt/odoo16
-DB_NAME="nguyenanpc"
-DB_USER="odoo"
-FILESTORE="$ODOO_HOME/.local/share/Odoo/filestore/$DB_NAME"
+# Kiểm tra thư mục backup
+mkdir -p "$BACKUP_DIR"
+
+# Cấu hình biến
+DB_NAME="nguyenanpc"  # hoặc lấy từ ENV nếu bạn set sẵn
 DATE=$(date +"%Y%m%d_%H%M%S")
-PG_DUMP="/usr/bin/pg_dump"
-
-# Tạo thư mục backups nếu chưa có
-mkdir -p "${BACKUP_DIR}"
-
-# Dump DB
-echo "🗄 Backup DB..."
-sudo -u $DB_USER $PG_DUMP -U $DB_USER $DB_NAME > /tmp/${DB_NAME}_${DATE}.sql
-
-# Tạo file backup
+TMP_DIR="/tmp/odoo_backup_$DB_NAME"
+DUMP_FILE="${TMP_DIR}/dump.dump"
+FILESTORE="$ODOO_HOME/.local/share/Odoo/filestore/$DB_NAME"
 BACKUP_FILE="${BACKUP_DIR}/odoo_${DB_NAME}_${DATE}.tar.gz"
-echo "📦 Tạo archive backup..."
-tar -czf "$BACKUP_FILE" -C /tmp ${DB_NAME}_${DATE}.sql -C "$FILESTORE" . /etc/odoo.conf
 
-# Xoá file dump tạm
-rm /tmp/${DB_NAME}_${DATE}.sql
-echo "✅ Backup hoàn tất: $BACKUP_FILE"
+# Tạo thư mục tạm
+rm -rf "$TMP_DIR"
+mkdir -p "$TMP_DIR"
 
-# Cập nhật addons bằng git pull
-echo "🔄 Cập nhật addons..."
-cd $ODOO_HOME/custom_addons
+# Dump database (format binary)
+echo "🗄 Đang backup DB..."
+sudo -u $ODOO_USER pg_dump -Fc -f "$DUMP_FILE" "$DB_NAME"
+
+# Copy filestore
+echo "📁 Sao chép filestore..."
+cp -r "$FILESTORE" "$TMP_DIR/filestore"
+
+# Copy cấu hình
+echo "⚙️ Sao chép cấu hình odoo.conf..."
+cp /etc/odoo.conf "$TMP_DIR/odoo.conf"
+
+# Tạo file tar.gz
+echo "📦 Tạo file backup nén..."
+tar -czf "$BACKUP_FILE" -C "$TMP_DIR" .
+
+# Xoá thư mục tạm
+rm -rf "$TMP_DIR"
+
+echo "✅ Hoàn tất backup: $BACKUP_FILE"
+
+# ======================= Cập nhật addons =======================
+echo "🔄 Đang cập nhật các custom addons..."
+cd "$ODOO_HOME/custom_addons"
 for d in */; do
-    cd "$d"
     echo "→ Pulling $d"
-    git pull || echo "Không thể pull $d"
+    cd "$d"
+    git pull || echo "❌ Không thể pull $d"
     cd ..
 done
-echo "✅ Cập nhật addons xong!"
+echo "✅ Đã cập nhật addons xong!"
