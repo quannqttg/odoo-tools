@@ -1,5 +1,8 @@
 #!/bin/bash
 
+# Nạp biến môi trường
+source "$(dirname "$0")/.env"
+
 # File tạm chứa cron job
 TMP_CRON=$(mktemp)
 
