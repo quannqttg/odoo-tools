@@ -55,19 +55,63 @@ sudo -u "$ODOO_USER" -H "$ODOO_HOME/venv/bin/pip" install python-ldap
 # ==========================================
 # ✅ CLONE CUSTOM ADDONS
 # ==========================================
-echo "📦 Đang clone các custom addons..."
+echo "📦 Clone các custom addons..."
 
 sudo -u "$ODOO_USER" -H git clone https://github.com/OCA/account-financial-tools.git "$CUSTOM_ADDONS/account-financial-tools"
 sudo -u "$ODOO_USER" -H git clone https://github.com/OCA/account-financial-reporting.git "$CUSTOM_ADDONS/account-financial-reporting"
 sudo -u "$ODOO_USER" -H git clone https://github.com/OCA/stock-logistics-barcode.git "$CUSTOM_ADDONS/stock-logistics-barcode"
 
-# ✅ Sửa đoạn base_accounting_kit: dùng repo công khai chuẩn cho Odoo 16
 echo "📥 Clone base_accounting_kit..."
 if sudo -u "$ODOO_USER" -H git clone --depth 1 --branch 16.0 https://github.com/odoo-ecu/base-accounting-kit.git "$CUSTOM_ADDONS/base_accounting_kit"; then
     echo "✅ Clone thành công từ odoo-ecu"
 else
-    echo "❌ Không thể clone base_accounting_kit. Vui lòng kiểm tra kết nối Internet hoặc repo"
+    echo "❌ Clone thất bại. Vui lòng kiểm tra kết nối Internet hoặc repo"
 fi
+
+# ==========================================
+# ✅ TẠO MODULE auto_enable_accounting
+# ==========================================
+echo "⚙️ Tạo module auto_enable_accounting..."
+
+AUTO_ADDONS_DIR="$CUSTOM_ADDONS/auto_enable_accounting"
+mkdir -p "$AUTO_ADDONS_DIR/models"
+
+tee "$AUTO_ADDONS_DIR/__manifest__.py" > /dev/null <<EOF
+{
+    'name': 'Auto Enable Full Accounting Features',
+    'version': '16.0.1.0.0',
+    'summary': 'Tự động bật tính năng kế toán đầy đủ cho user admin',
+    'depends': ['account'],
+    'installable': True,
+    'auto_install': False
+}
+EOF
+
+tee "$AUTO_ADDONS_DIR/__init__.py" > /dev/null <<EOF
+from . import models
+EOF
+
+tee "$AUTO_ADDONS_DIR/models/enable_accounting.py" > /dev/null <<EOF
+from odoo import models, api, SUPERUSER_ID
+
+class EnableAccounting(models.AbstractModel):
+    _name = 'enable.accounting.auto'
+    _description = 'Tự động bật nhóm kế toán cho user admin'
+
+    @api.model
+    def _enable_accounting_group(self):
+        user = self.env['res.users'].browse(SUPERUSER_ID)
+        group = self.env.ref('account.group_account_user')
+        if group.id not in user.groups_id.ids:
+            user.write({'groups_id': [(4, group.id)]})
+
+    @api.model
+    def _register_hook(self):
+        self._enable_accounting_group()
+        return super()._register_hook()
+EOF
+
+sudo chown -R "$ODOO_USER:$ODOO_USER" "$AUTO_ADDONS_DIR"
 
 # ==========================================
 # ✅ TẠO FILE CẤU HÌNH odoo.conf
@@ -97,8 +141,7 @@ sudo chmod 640 /etc/odoo.conf
 # ==========================================
 # ✅ TẠO SYSTEMD SERVICE
 # ==========================================
-echo "⚙️ Tạo dịch vụ systemd odoo.service"
-
+echo "🔧 Tạo dịch vụ systemd: odoo.service"
 sudo tee /etc/systemd/system/odoo.service > /dev/null <<EOF
 [Unit]
 Description=Odoo 16 Service
@@ -116,17 +159,38 @@ WantedBy=multi-user.target
 EOF
 
 # ==========================================
-# ✅ KÍCH HOẠT VÀ KHỞI ĐỘNG DỊCH VỤ
+# ✅ KÍCH HOẠT auto_enable_accounting (nếu có DB)
+# ==========================================
+if sudo -u postgres psql -lqt | cut -d \| -f 1 | grep -qw odoo16; then
+  echo "📌 Đã có database odoo16 → Cài auto_enable_accounting..."
+  sudo -u "$ODOO_USER" -H "$ODOO_HOME/venv/bin/python3" "$ODOO_HOME/odoo/odoo-bin" \
+      -c /etc/odoo.conf \
+      -d odoo16 \
+      -i auto_enable_accounting \
+      --stop-after-init
+else
+  echo "⚠️ Chưa có database odoo16, bỏ qua bước cài module kế toán."
+fi
+
+# ==========================================
+# ✅ KHỞI ĐỘNG DỊCH VỤ ODOO
 # ==========================================
 sudo systemctl daemon-reexec
 sudo systemctl daemon-reload
 sudo systemctl enable odoo
 sudo systemctl start odoo
 
+sleep 5
+if systemctl is-active --quiet odoo; then
+  echo "✅ Dịch vụ Odoo đang chạy bình thường."
+else
+  echo "❌ Lỗi khi khởi động Odoo. Kiểm tra với: journalctl -u odoo"
+fi
+
 # ==========================================
 # ✅ THÔNG BÁO HOÀN TẤT
 # ==========================================
 echo ""
-echo "✅ Odoo 16 đã được cài đặt thành công!"
-echo "🌐 Truy cập tại: http://$(hostname -I | awk '{print $1}'):$ODOO_PORT"
+echo "🎉 Odoo 16 đã được cài đặt thành công!"
+echo "🌐 Truy cập: http://$(hostname -I | awk '{print $1}'):$ODOO_PORT"
 echo "🔐 Mật khẩu super admin: $ODOO_SUPER_PWD"
