@@ -1,5 +1,7 @@
 #!/bin/bash
 
+source "$(dirname "$0")/.env"
+
 # Cấu hình
 BACKUP_DIR="/opt/odoo16/backups"
 ODOO_HOME=/opt/odoo16
