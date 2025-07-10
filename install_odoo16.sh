@@ -61,17 +61,12 @@ sudo -u "$ODOO_USER" -H git clone https://github.com/OCA/account-financial-tools
 sudo -u "$ODOO_USER" -H git clone https://github.com/OCA/account-financial-reporting.git "$CUSTOM_ADDONS/account-financial-reporting"
 sudo -u "$ODOO_USER" -H git clone https://github.com/OCA/stock-logistics-barcode.git "$CUSTOM_ADDONS/stock-logistics-barcode"
 
-# Thử clone base_accounting_kit từ nguồn chính, nếu lỗi thì fallback sang fork
+# ✅ Sửa đoạn base_accounting_kit: dùng repo công khai chuẩn cho Odoo 16
 echo "📥 Clone base_accounting_kit..."
-if sudo -u "$ODOO_USER" -H git clone https://github.com/CybroOdoo/base_accounting_kit.git "$CUSTOM_ADDONS/base_accounting_kit"; then
-    echo "✅ Clone thành công từ CybroOdoo"
+if sudo -u "$ODOO_USER" -H git clone --depth 1 --branch 16.0 https://github.com/odoo-ecu/base-accounting-kit.git "$CUSTOM_ADDONS/base_accounting_kit"; then
+    echo "✅ Clone thành công từ odoo-ecu"
 else
-    echo "⚠️ Clone thất bại từ CybroOdoo. Đang thử từ fork cá nhân..."
-    if sudo -u "$ODOO_USER" -H git clone https://github.com/quannqttg/base_accounting_kit.git "$CUSTOM_ADDONS/base_accounting_kit"; then
-        echo "✅ Clone thành công từ fork cá nhân"
-    else
-        echo "❌ Không thể clone base_accounting_kit. Vui lòng kiểm tra quyền truy cập GitHub"
-    fi
+    echo "❌ Không thể clone base_accounting_kit. Vui lòng kiểm tra kết nối Internet hoặc repo"
 fi
 
 # ==========================================
