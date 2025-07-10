@@ -55,7 +55,7 @@ sudo -u "$ODOO_USER" -H "$ODOO_HOME/venv/bin/pip" install python-ldap
 # ==========================================
 # ✅ CLONE CUSTOM ADDONS
 # ==========================================
-echo "📦 Clone các custom addons..."
+echo "📦 Đang clone các custom addons..."
 
 sudo -u "$ODOO_USER" -H git clone https://github.com/OCA/account-financial-tools.git "$CUSTOM_ADDONS/account-financial-tools"
 sudo -u "$ODOO_USER" -H git clone https://github.com/OCA/account-financial-reporting.git "$CUSTOM_ADDONS/account-financial-reporting"
@@ -65,7 +65,7 @@ echo "📥 Clone base_accounting_kit..."
 if sudo -u "$ODOO_USER" -H git clone --depth 1 --branch 16.0 https://github.com/odoo-ecu/base-accounting-kit.git "$CUSTOM_ADDONS/base_accounting_kit"; then
     echo "✅ Clone thành công từ odoo-ecu"
 else
-    echo "❌ Clone thất bại. Vui lòng kiểm tra kết nối Internet hoặc repo"
+    echo "❌ Không thể clone base_accounting_kit. Vui lòng kiểm tra kết nối Internet hoặc repo"
 fi
 
 # ==========================================
@@ -73,25 +73,27 @@ fi
 # ==========================================
 echo "⚙️ Tạo module auto_enable_accounting..."
 
+sudo -u "$ODOO_USER" -H bash <<EOF
+set -e
 AUTO_ADDONS_DIR="$CUSTOM_ADDONS/auto_enable_accounting"
-mkdir -p "$AUTO_ADDONS_DIR/models"
+mkdir -p "\$AUTO_ADDONS_DIR/models"
 
-tee "$AUTO_ADDONS_DIR/__manifest__.py" > /dev/null <<EOF
+cat > "\$AUTO_ADDONS_DIR/__manifest__.py" <<EOL
 {
-    'name': 'Auto Enable Full Accounting Features',
-    'version': '16.0.1.0.0',
-    'summary': 'Tự động bật tính năng kế toán đầy đủ cho user admin',
-    'depends': ['account'],
-    'installable': True,
-    'auto_install': False
+    "name": "Auto Enable Full Accounting Features",
+    "version": "16.0.1.0.0",
+    "summary": "Tự động bật tính năng kế toán đầy đủ cho user admin",
+    "depends": ["account"],
+    "installable": True,
+    "auto_install": False
 }
-EOF
+EOL
 
-tee "$AUTO_ADDONS_DIR/__init__.py" > /dev/null <<EOF
+cat > "\$AUTO_ADDONS_DIR/__init__.py" <<EOL
 from . import models
-EOF
+EOL
 
-tee "$AUTO_ADDONS_DIR/models/enable_accounting.py" > /dev/null <<EOF
+cat > "\$AUTO_ADDONS_DIR/models/enable_accounting.py" <<EOL
 from odoo import models, api, SUPERUSER_ID
 
 class EnableAccounting(models.AbstractModel):
@@ -109,9 +111,8 @@ class EnableAccounting(models.AbstractModel):
     def _register_hook(self):
         self._enable_accounting_group()
         return super()._register_hook()
+EOL
 EOF
-
-sudo chown -R "$ODOO_USER:$ODOO_USER" "$AUTO_ADDONS_DIR"
 
 # ==========================================
 # ✅ TẠO FILE CẤU HÌNH odoo.conf
@@ -142,6 +143,7 @@ sudo chmod 640 /etc/odoo.conf
 # ✅ TẠO SYSTEMD SERVICE
 # ==========================================
 echo "🔧 Tạo dịch vụ systemd: odoo.service"
+
 sudo tee /etc/systemd/system/odoo.service > /dev/null <<EOF
 [Unit]
 Description=Odoo 16 Service
@@ -159,33 +161,26 @@ WantedBy=multi-user.target
 EOF
 
 # ==========================================
-# ✅ KÍCH HOẠT auto_enable_accounting (nếu có DB)
+# ✅ KHỞI ĐỘNG VÀ CÀI MODULE KẾ TOÁN TỰ ĐỘNG
 # ==========================================
-if sudo -u postgres psql -lqt | cut -d \| -f 1 | grep -qw odoo16; then
-  echo "📌 Đã có database odoo16 → Cài auto_enable_accounting..."
-  sudo -u "$ODOO_USER" -H "$ODOO_HOME/venv/bin/python3" "$ODOO_HOME/odoo/odoo-bin" \
-      -c /etc/odoo.conf \
-      -d odoo16 \
-      -i auto_enable_accounting \
-      --stop-after-init
+if ! sudo -u postgres psql -lqt | cut -d \| -f 1 | grep -qw odoo16; then
+    echo "⚠️ Chưa có database odoo16, bỏ qua bước cài module kế toán."
 else
-  echo "⚠️ Chưa có database odoo16, bỏ qua bước cài module kế toán."
+    echo "⚙️ Cài đặt module auto_enable_accounting vào odoo16..."
+    sudo -u "$ODOO_USER" -H "$ODOO_HOME/venv/bin/python3" "$ODOO_HOME/odoo/odoo-bin" \
+        -c /etc/odoo.conf \
+        -d odoo16 \
+        -i auto_enable_accounting \
+        --stop-after-init
 fi
 
 # ==========================================
-# ✅ KHỞI ĐỘNG DỊCH VỤ ODOO
+# ✅ KÍCH HOẠT DỊCH VỤ
 # ==========================================
 sudo systemctl daemon-reexec
 sudo systemctl daemon-reload
 sudo systemctl enable odoo
 sudo systemctl start odoo
-
-sleep 5
-if systemctl is-active --quiet odoo; then
-  echo "✅ Dịch vụ Odoo đang chạy bình thường."
-else
-  echo "❌ Lỗi khi khởi động Odoo. Kiểm tra với: journalctl -u odoo"
-fi
 
 # ==========================================
 # ✅ THÔNG BÁO HOÀN TẤT
