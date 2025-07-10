@@ -1,5 +1,7 @@
 #!/bin/bash
 
+source "$(dirname "$0")/.env"
+
 # =================== CẤU HÌNH ===================
 ODOO_USER=odoo
 ODOO_HOME=/opt/odoo16
