@@ -1,5 +1,8 @@
 #!/bin/bash
 
+# Nạp biến môi trường
+source "$(dirname "$0")/.env"
+
 ODOO_USER=odoo
 ODOO_HOME=/opt/odoo16
 ODOO_SERVICE=odoo
